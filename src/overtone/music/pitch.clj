@@ -112,7 +112,7 @@
   (let [pc (keyword (name pc))]
       (REVERSE-NOTES (NOTES pc))))
 
-(def MIDI-NOTE-RE-STR "([a-gA-G][#bB]?)([-0-9]+)?" )
+(def MIDI-NOTE-RE-STR "([a-gA-G][#bB]?)(-?[0-9])?" )
 (def MIDI-NOTE-RE (re-pattern MIDI-NOTE-RE-STR))
 (def ONLY-MIDI-NOTE-RE (re-pattern (str "\\A" MIDI-NOTE-RE-STR "\\Z")))
 
@@ -132,13 +132,18 @@
               (str "Invalid midi-string. " mk
                    " does not appear to be in MIDI format i.e. C#4"))))
 
-    (let [[match pictch-class octave-str] matches
-          octave (first octave-str)]
+    (let [[match pitch-class octave-str] matches
+          octave (case pitch-class
+                   ("b#" "B#") (inc (Integer/parseInt octave-str))
+                   ("cb" "cB" "Cb" "CB") (dec (Integer/parseInt octave-str))
+                   (Integer/parseInt octave-str))]
       (when (and octave (< (int octave) -1))
         (throw (IllegalArgumentException.
                 (str "Invalid midi-string: " mk
-                     ". Octave is out of range. Lowest octave value is -1")))))
-    matches))
+                     ". Octave is out of range. Lowest octave value is -1"))))
+      (assoc matches
+             2
+             (str octave)))))
 
 (defn note-info
   "Takes a string representing a midi note such as C4 and returns a map
@@ -362,7 +367,10 @@
        start of the scale."
   ([n] (nth-interval :diatonic n))
   ([scale n]
-   (reduce + (take n (cycle (scale SCALE))))))
+   (let [s (scale SCALE)]
+     (if (< n 0)
+       (- (nth-interval scale (+ n (count s))) 12)
+       (reduce + (take n (cycle s)))))))
 
 (def DEGREE {:i     1
              :ii    2
@@ -472,7 +480,10 @@
 
   (scale :c4 :major)  ; c major      -> (60 62 64 65 67 69 71 72)
   (scale :Bb4 :minor) ; b flat minor -> (70 72 73 75 77 78 80 82)"
-  ([root scale-name] (scale root scale-name (range 1 8)))
+  ([root scale-name]
+   (let [root (note root)
+         scale-length (count (SCALE scale-name))]
+     (map #(+ root (nth-interval scale-name %)) (range (inc scale-length)))))
   ([root scale-name degrees]
    (let [root (note root)
          degrees (resolve-degrees degrees)]

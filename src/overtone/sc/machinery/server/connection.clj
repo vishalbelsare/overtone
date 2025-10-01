@@ -20,8 +20,8 @@
    [overtone.sc.machinery.server.comms :refer [server-osc-peer* server-recv server-snd]]
    [overtone.version :as version])
   (:import
-   (java.io BufferedInputStream File InputStream OutputStream)
-   (java.lang Process ProcessBuilder)))
+   (java.io File InputStream OutputStream)
+   (java.net ServerSocket)))
 
 (set! *warn-on-reflection* true)
 
@@ -215,10 +215,16 @@
           (recur))))
     proc))
 
+;; there's no way to have scsynth pick a free port and then report which it picked.
+;; this is more reliable than choosing a random port.
+(defn- get-free-port []
+  (with-open [socket (ServerSocket. 0)]
+    (.getLocalPort socket)))
+
 (defn- external-booter
   "Boot thread to start the external audio server process and hook up to
   STDOUT for log messages."
-  ([^"[Ljava.lang.String;" cmd] (external-booter cmd "."))
+  ([cmd] (external-booter cmd "."))
   ([^"[Ljava.lang.String;" cmd ^java.lang.String working-dir]
    (log/info "Booting external audio server with cmd: " (seq cmd) ", and working directory: " working-dir)
    (let [working-dir  (File. working-dir)
@@ -228,13 +234,6 @@
      (while (not (= :disconnected @connection-status*))
        (Thread/sleep 250))
      (.destroy ^Process proc))))
-
-(defn- find-well-known-sc-path
-  "Find the path for SuperCollider by checking common locations."
-  []
-  (let [os    (get-os)
-        paths (defaults/SC-PATHS os)]
-    (first (filter #(file/file-can-execute? %) paths))))
 
 (defn- find-sc-arg-flag!
   "Retrieves the SC argument flag for sc-arg. Throws exception if flag
@@ -275,9 +274,12 @@
 
 (defn scsynth-path []
   (let [sc-config (config/config-get :sc-path)
-        sc-path (file/find-executable "scsynth")
-        sc-wellknown (find-well-known-sc-path)
-        match (or sc-config sc-path sc-wellknown)]
+        sc-path (delay (or (when (windows-os?)
+                             (file/find-executable "scsynth.exe"))
+                           ;; should windows look here?
+                           (file/find-executable "scsynth")))
+        sc-wellknown (delay (file/find-well-known-sc-path defaults/SC-PATHS))
+        match (or sc-config @sc-path @sc-wellknown)]
     (when-not match
       (throw (ex-info (str "Failed to find SuperCollider server executable (scsynth). The file does not exist or is not executable. Places I've looked:\n"
                            "- `:sc-path` in " config/OVERTONE-CONFIG-FILE " (" (pr-str sc-config) ")\n"
@@ -287,9 +289,9 @@
     (log/info "Found SuperCollider server: " match " (" (cond
                                                           sc-config
                                                           (str "configured in " config/OVERTONE-CONFIG-FILE)
-                                                          sc-path
+                                                          @sc-path
                                                           "PATH"
-                                                          sc-wellknown
+                                                          @sc-wellknown
                                                           (str "well-known location for " (name (get-os))))
               ")")
     (if (coll? match)
@@ -329,7 +331,9 @@
          cmd       (sc-command full-opts)
 
          sc-thread (if (windows-os?)
-                     (Thread. #(external-booter cmd (windows-sc-path)))
+                     (Thread. #(external-booter cmd (or (windows-sc-path)
+                                                        ;; if scsynth.exe comes from PATH
+                                                        ".")))
                      (Thread. #(external-booter cmd)))]
      (.setDaemon sc-thread true)
      (println "--> Booting external SuperCollider server...")
@@ -376,7 +380,7 @@
       (ref-set connection-info*
                (transient-connection-info connection-type port)))
 
-     (let [port (if (nil? port) (+ (rand-int 50000) 2000) port)]
+     (let [port (or port (get-free-port))]
        (when (not= :external connection-type)
          (log/warn "Only :external connection type is supported, :connection-type " connection-type " ignored. (" config/OVERTONE-CONFIG-FILE ")"))
        (boot-server port opts)

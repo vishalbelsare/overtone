@@ -1,10 +1,66 @@
 # Unreleased
 
 ## Added
+- [588](https://github.com/overtone/overtone/pull/588): Support `offset` quantization parameter in `pplay`, `padd`, and `presume`. Added quantization tests.
+- [581](https://github.com/overtone/overtone/pull/581): Replaceable instrument output mixers with `replace-inst-mixer!` and `replace-all-inst-mixer!`. Control new mixers parameter values with `inst-mixer-ctl!`. Included an Ambisonic studio example use case.
+- [594](https://github.com/overtone/overtone/pull/594): Add 1-arity to `overtone.music.rhythm/beat-ms` for the number of milliseconds during 1 beat.
+- [594](https://github.com/overtone/overtone/pull/594): Add unit tests for `overtone.music.rhythm/beat-ms`.
+
+## Fixed
+- [573](https://github.com/overtone/overtone/pull/573): reduce likelihood of choosing a used random port for `scsynth`
+- [578](https://github.com/overtone/overtone/pull/578): Fixed `overtone.sc.synth/buzz` instrument.
+- [577](https://github.com/overtone/overtone/pull/577): Fix `/cmd` validation
+- [582](https://github.com/overtone/overtone/pull/582): Enable insts to be loaded before server startup
+- [583](https://github.com/overtone/overtone/pull/583): `bass` and `grunge-bass` in `overtone.inst.synth` both now mix 3 audio channels (center freq and detuned high and low) to a single channel.
+- [592](https://github.com/overtone/overtone/pull/592): The output mixer for stereo instruments now includes both channels in the balance.
+- [551](https://github.com/overtone/overtone/issues/551): Fix MIDI number calculation beyond octave boundaries
+
+## Breaking Changes
+- [582](https://github.com/overtone/overtone/pull/582) adds the potemkin lib, which makes Inst accept up to 21 arguments if you use `apply`, also the Inst class has two more params (`m` and `mta`) for its constructor
+
+## Changed
+- [581](https://github.com/overtone/overtone/pull/581): Instrument has a new `:mixer-params` field that holds an atom whose value is a map with any number of mixer parameters. To avoid breaking change while consolidating mixer parameters in `:mixer-params`, `:volume` and `:pan` atoms are now lentes derived atoms that track the keys in `:mixer-params`.
+
+## Improvements
+- [594](https://github.com/overtone/overtone/pull/594): Update cheatsheet.
+- [594](https://github.com/overtone/overtone/pull/594): Update metronome implementation to take advantage of `ref-set`/`ensure` return value, and avoid unecessary `ref` dereferences.
+
+# 0.16.3331 (2024-11-07 / 09b1fca)
+
+## Added
+
+- [567](https://github.com/overtone/overtone/pull/567)
+  - Add `overtone.sc.sclang` namespace to interact with the `sclang` commands
+    and to use `sclang` generated synthdefs
+    - Even if the final user doesn't have  `sclang` available on their machine,
+      as long as the resource was generated previously, it should work transparently
+  - Add `:sclang-path` config to set `sclang` executable location
+- Add `at-offset` as an addition to the `at-at` based scheduling API
+- Add support for URL and byte arrays in `synth-load`
 
 ## Fixed
 
+- [567](https://github.com/overtone/overtone/pull/567)
+  - `resources` directory is included in Overtone's jar and deps.edn path (adds `overtone-logo.png` back to class path)
+
+- [#556](https://github.com/overtone/overtone/issues/556)
+  - multichannel expanding logic for ugens now correctly handles keyword arguments
+  - don't `flatten` single map arguments passed to ugens, use `apply concat` instead
+
+- [#557](https://github.com/overtone/overtone/issues/557): envelope description array generators have line numbers for jump-to-definition purposes
+
+- fix double-eval for `overtone.sc.server/at{-offset}` macros
+- setup studio groups only after foundational groups
+- ensure later events in dep-state* go after earlier events in `:history`
+- Fix `defsynth-load` macro, handle arguments that aren't a string literal
+- `overtone.music.pitch/scale` : correctly handle scales that contain more than 8 notes
+- Support setting `:beat` or `:start-time` in note events
+
 ## Changed
+- `overtone.sc.ugen-collide/binary-div-op` ugen has been renamed `overtone.sc.ugen-collide//`
+  - no change under `with-overloaded-ugens`
+- `overtone.studio.aux` is now named `aux-bus` instead, can't have files named "AUX" on windows
+- Pattern library: make the default behavior to wait for the next sync point (`:align :wait`)
 
 # 0.15.3295 (2024-10-24 / d354b4f)
 
@@ -129,7 +185,7 @@ reconcile the two.
 
 This is the first version without the internal SuperCollider server
 (libscsynth). See [this mailing list post](https://groups.google.com/g/overtone/c/qndjDV5FS9Y/m/lPo4QFYpAAAJ)
-for the reasoning behind that change. This also means we could drop the bulk of our dependencies, 
+for the reasoning behind that change. This also means we could drop the bulk of our dependencies,
 making Overtone much lighter.
 
 Our work continues to keep Overtone relevant for years to come. We've fixed a
@@ -142,7 +198,7 @@ wiki, to help you get situated.
 
 ## Changed
 
-- Remove embedded (internal) SuperCollider server 
+- Remove embedded (internal) SuperCollider server
 - Provide clearer output about what it's doing when starting an external `scsynth`
 - Remove `project.clj`, switch to full Clojure CLI based tooling (see `bin/proj`)
 - Use `at-at` from Clojars, rather than inlining it here
@@ -185,7 +241,7 @@ and keeping it relevant for years to come.
 * use canonical URL for freesound API (#479)
 * Fix window paths to allow downloading samples (#487)
 * Removed obsolete JVM option CMSConcurrentMTEnabled (#488)
-* Read synthdef files correctly (#489) 
+* Read synthdef files correctly (#489)
 * Fix buffer reading (#490)
 * Add clj-kondo support (see `overtone.linter`) (#493)
 * Qualify the overtone ns in lein example (#495)

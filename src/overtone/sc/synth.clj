@@ -16,6 +16,7 @@
    [clojure.pprint]
    [overtone.helpers.string :only [hash-shorten]])
   (:require
+   [overtone.sc.machinery.synthdef :as synthdef]
    [overtone.config.log]
    [clojure.set :as set]
    [overtone.sc.cgens.env :refer [hold]]
@@ -584,18 +585,24 @@
 
 (defn synth-form
   "Internal function used to prepare synth meta-data."
-  [s-name s-form]
-  (let [[s-name s-form] (name-with-attributes s-name s-form)
-        _               (when (not (symbol? s-name))
-                          (throw (IllegalArgumentException. (str "You need to specify a name for your synth using a symbol"))))
-        params          (first s-form)
-        ugen-form       (concat '(do) (next s-form))
-        param-names     (list (vec (map #(symbol (:name %)) (parse-params params))))
-        md              (assoc (meta s-name)
-                               :name s-name
-                               :type ::synth
-                               :arglists (list 'quote param-names))]
-    [(with-meta s-name md) params ugen-form]))
+  ([s-name s-form]
+   (synth-form s-name s-form {}))
+  ([s-name s-form {:keys [compile-time?]
+                   :or {compile-time? true}}]
+   (let [[s-name s-form] (name-with-attributes s-name s-form)
+         _               (when (not (symbol? s-name))
+                           (throw (IllegalArgumentException. (str "You need to specify a name for your synth using a symbol"))))
+         params          (first s-form)
+         ugen-form       (concat '(do) (next s-form))
+         param-names     (list (vec (map #(symbol (:name %)) (parse-params params))))
+         md              (assoc (meta s-name)
+                                :name s-name
+                                :type ::synth
+                                ;; At run-time, we don't need the extra `quote`.
+                                :arglists (if compile-time?
+                                            (list 'quote param-names)
+                                            param-names))]
+     [(with-meta s-name md) params ugen-form])))
 
 (defmacro defsynth
   "Define a synthesizer and return a player function. The synth
@@ -660,39 +667,53 @@
     `(def ~s-name (synth ~s-name ~params ~ugen-form))))
 
 (defn synth-load
-  [file-path]
-  (let [{:keys [pnames params] :as sdef} (load-synth-file file-path)
+  "Load synthdef data from either a file specified using a string path
+  a URL (e.g. resource), or a byte array."
+  [data]
+  (let [{:keys [pnames params] :as sdef} (if (string? data)
+                                           (synthdef/load-synth-file data)
+                                           (let [sdef (synthdef/synthdef-read data)]
+                                             (synthdef/load-synthdef sdef)
+                                             sdef))
         [s-name params _ugen-form] (synth-form (symbol (:name sdef))
                                                (list (vec (mapcat (fn [pname default-value]
                                                                     [(symbol (:name pname)) default-value])
                                                                   pnames params))
-                                                     nil))]
+                                                     nil)
+                                               {:compile-time? false})]
     (with-meta
       (map->Synth
        {:name s-name
-        :sdef sdef})
+        :sdef sdef
+        :args params})
       (merge {:overtone.helpers.lib/to-string #(str (name (:type %)) ":" (:name %))}
              (meta s-name)))))
 
 (defmacro defsynth-load
-  "Load a synth from a compiled Synthdef file.
+  "Load a synth from a compiled Synthdef file string, URL (e.g. resource) or
+  byte array.
 
   E.g.
   (defsynth-load my-beep
    \"/Users/paulo.feodrippe/dev/sonic-pi/etc/synthdefs/compiled/sonic-pi-beep.scsyndef\")
 
-  (my-beep :note 40)"
-  [def-name file-path]
-  (let [smap (synth-load file-path)]
-    `(def ~(with-meta def-name
-             (merge (dissoc (meta smap) :name)
-                    (meta def-name)))
-       ~smap)))
+  (my-beep :note 40)
+
+    or, with an example using a resource,
+
+  (defsynth-load my-synth
+    (io/resource \"event.scsyndef\"))"
+  [def-name data]
+  `(let [smap# (synth-load ~data)]
+     (def ~def-name
+       smap#)
+     (alter-meta! (var ~def-name) merge (meta ~def-name))
+     (var ~def-name)))
 
 (defn synth?
   "Returns true if s is a synth, false otherwise."
   [s]
-  (= overtone.sc.synth.Synth (type s)))
+  (instance? Synth s))
 
 (def ^{:dynamic true} *demo-time* 2000)
 

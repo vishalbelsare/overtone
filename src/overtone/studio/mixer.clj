@@ -215,9 +215,10 @@
                             "whilst creating the Studio group")
         insts-with-groups (map-vals (fn [val]
                                       (assoc val :group
-                                        (with-server-sync
-                                          #(group (str "Recreated Inst Group") :tail g)
-                                          "whist creating the Recreated Inst Group")))
+                                             (atom
+                                              (with-server-sync
+                                                #(group (str "Recreated Inst Group") :tail g)
+                                                "whist creating the Recreated Inst Group"))))
                                     (:instruments @studio*))]
     (swap! studio* assoc
            :instrument-group g
@@ -228,7 +229,7 @@
   []
   (setup-studio-groups))
 
-(on-deps :server-ready ::setup-studio-groups setup-studio)
+(on-deps :foundation-groups-created ::setup-studio-groups setup-studio)
 
 (defn reset-instruments
   "Frees all synth notes for each of the current instruments"
